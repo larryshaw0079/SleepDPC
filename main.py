@@ -20,7 +20,9 @@ import torch.optim as optim
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 
-from bio_contrast.data import SleepEDFDataset
+from sklearn.model_selection import train_test_split
+
+from bio_contrast.data import prepare_dataset, SleepEDFDataset
 from bio_contrast.model import SleepContrast, SleepClassifier
 
 
@@ -152,11 +154,12 @@ if __name__ == '__main__':
 
     setup_seed(args.seed)
 
-    dataset = SleepEDFDataset(path=args.data_path, patients=args.num_patient, seq_len=args.seq_len,
-                              stride=args.stride, return_label=True)
+    data, targets = prepare_dataset(path=args.data_path, patients=args.num_patient, seq_len=args.seq_len,
+                                    stride=args.stride)
+    train_x, test_x, train_y, test_y = train_test_split(data, targets, train_size=args.train_ratio)
 
-    train_size = int(len(dataset) * args.train_ratio)
-    train_dataset, test_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
+    train_dataset = SleepEDFDataset(train_x, train_y, return_label=True)
+    test_dataset = SleepEDFDataset(test_x, test_y, return_label=True)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               drop_last=True, shuffle=True, pin_memory=True)
@@ -181,7 +184,9 @@ if __name__ == '__main__':
         finetune_param.data = pretraining_param.data
 
     finetune_size = int(len(train_dataset) * args.finetune_ratio)
-    finetune_dataset, _ = random_split(train_dataset, [finetune_size, len(train_dataset) - finetune_size])
+    finetune_idx = np.random.choice(np.arange(len(train_dataset)), size=finetune_size, replace=False)
+    finetune_x, finetune_y = train_x[finetune_idx], train_y[finetune_idx]
+    finetune_dataset = SleepEDFDataset(finetune_x, finetune_y, return_label=True)
     finetune_loader = DataLoader(finetune_dataset, batch_size=args.batch_size,
                                  drop_last=True, shuffle=True, pin_memory=True)
 
