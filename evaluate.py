@@ -1,13 +1,15 @@
 """
-@Time    : 2020/9/17 19:09
+@Time    : 2020/10/5 14:54
 @Author  : Xiao Qinfeng
 @Email   : qfxiao@bjtu.edu.cn
-@File    : main.py
+@File    : evaluate.py
 @Software: PyCharm
 @Desc    : 
 """
 import os
+import random
 import argparse
+import warnings
 
 import numpy as np
 
@@ -28,10 +30,13 @@ from bio_contrast.model import SleepContrast, SleepClassifier
 def parse_args(verbose=True):
     parser = argparse.ArgumentParser()
 
+    # Data
     parser.add_argument('--data-path', type=str, default='./data/sleepedf')
     parser.add_argument('--save-path', type=str, default='./cache/checkpoints')
+    parser.add_argument('--load-path', type=str, required=True)
     parser.add_argument('--seed', type=int, default=2020)
 
+    # Model params
     parser.add_argument('--num-patient', type=int, default=5)
     parser.add_argument('--seq-len', type=int, default=20)
     parser.add_argument('--stride', type=int, default=1)
@@ -43,9 +48,10 @@ def parse_args(verbose=True):
     parser.add_argument('--num-classes', type=int, default=5)
     parser.add_argument('--finetune-ratio', type=float, default=0.1)
 
-    parser.add_argument('--epochs', type=int, default=100)
+    # Training params
     parser.add_argument('--finetune-epochs', type=int, default=10)
     parser.add_argument('--lr', dest='learning_rate', type=float, default=1e-3)
+    parser.add_argument('--lr-step', type=int, default=30)
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--train-ratio', type=float, default=0.7)
 
@@ -66,49 +72,18 @@ def parse_args(verbose=True):
     return args_parsed
 
 
-def compute_targets(args, device=0):
-    targets = torch.zeros(args.batch_size, args.pred_steps, args.num_seq, args.batch_size).long()
-    for i in range(args.batch_size):
-        for j in range(args.pred_steps):
-            targets[i, j, args.num_seq - args.pred_steps + j, i] = 1
+def setup_seed(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.backends.cudnn.deterministic = True
 
-    targets = targets.cuda(device)
-    targets = targets.view(args.batch_size * args.pred_steps, args.num_seq * args.batch_size)
-    targets = targets.argmax(dim=1)
-    return targets
-
-
-def train(model, train_loader, args):
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.98),
-                           eps=1e-09, weight_decay=1e-4, amsgrad=True)
-    criterion = nn.CrossEntropyLoss()
-    targets = compute_targets(args)
-
-    model.train()
-    for epoch in range(args.epochs):
-        loss_list = []
-
-        for x, y in track(train_loader, description=f'EPOCH: [{epoch + 1}/{args.epochs}]'):
-            x, y = x.cuda(), y.cuda()
-
-            optimizer.zero_grad()
-            score = model(x)
-
-            print(f'{score.shape} - {targets.shape}')
-
-            loss = criterion(score, targets)
-
-            loss.backward()
-            optimizer.step()
-
-            loss_list.append(loss.item())
-
-        print(f'Loss: {np.mean(loss_list)}')
-
-        if (epoch + 1) % 10 == 0:
-            if not os.path.exists(args.save_path):
-                os.mkdir(args.save_path)
-            torch.save(model.state_dict(), os.path.join(args.save_path, f'encoder_epoch_{epoch}.pth'))
+    warnings.warn(f'You have chosen to seed ({seed}) training. '
+                  f'This will turn on the CUDNN deterministic setting, '
+                  f'which can slow down your training considerably! '
+                  f'You may see unexpected behavior when restarting '
+                  f'from checkpoints.')
 
 
 def finetune(classifier, finetune_loader, args):
@@ -156,13 +131,6 @@ def evaluate(classifier, test_loader, args):
     return {'accuracy': accuracy, 'f1_micro': f1_micro, 'f1_macro': f1_macro}
 
 
-def setup_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    torch.backends.cudnn.deterministic = True
-
-
 if __name__ == '__main__':
     args = parse_args()
 
@@ -171,18 +139,19 @@ if __name__ == '__main__':
     data, targets = prepare_dataset(path=args.data_path, patients=args.num_patient, seq_len=args.seq_len,
                                     stride=args.stride)
     train_x, test_x, train_y, test_y = train_test_split(data, targets, train_size=args.train_ratio)
-
     train_dataset = SleepEDFDataset(train_x, train_y, return_label=True)
     test_dataset = SleepEDFDataset(test_x, test_y, return_label=True)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               drop_last=True, shuffle=True, pin_memory=True)
+
     model = SleepContrast(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
                           feature_dim=args.feature_dim, pred_steps=args.pred_steps,
                           batch_size=args.batch_size, num_seq=args.num_seq, kernel_sizes=[7, 11, 7])
     model.cuda()
 
-    train(model, train_loader, args)
+    cache_dict = torch.load(args.load_path)
+    model.load_state_dict(cache_dict['state_dict'])
 
     classifier = SleepClassifier(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
                                  num_classes=args.num_classes, feature_dim=args.feature_dim,
@@ -208,7 +177,7 @@ if __name__ == '__main__':
                                  drop_last=True, shuffle=True, pin_memory=True)
 
     finetune(classifier, finetune_loader, args)
-    torch.save(classifier.state_dict(), os.path.join(args.save_path, 'classifier.pth'))
+    torch.save(classifier.state_dict(), os.path.join(args.save_path, 'classifier.pth.tar'))
 
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, drop_last=True, shuffle=True, pin_memory=True)
     results = evaluate(classifier, test_loader, args)
