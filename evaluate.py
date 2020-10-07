@@ -136,11 +136,12 @@ if __name__ == '__main__':
 
     setup_seed(args.seed)
 
-    data, targets = prepare_dataset(path=args.data_path, patients=args.num_patient, seq_len=args.seq_len,
-                                    stride=args.stride)
+    data, targets = prepare_dataset(path=args.data_path, patients=args.num_patient)
     train_x, test_x, train_y, test_y = train_test_split(data, targets, train_size=args.train_ratio)
-    train_dataset = SleepEDFDataset(train_x, train_y, return_label=True)
-    test_dataset = SleepEDFDataset(test_x, test_y, return_label=True)
+    train_dataset = SleepEDFDataset(train_x, train_y, seq_len=args.seq_len,
+                                    stride=args.stride, return_label=True)
+    test_dataset = SleepEDFDataset(test_x, test_y, seq_len=args.seq_len,
+                                    stride=args.stride, return_label=True)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               drop_last=True, shuffle=True, pin_memory=True)
@@ -148,6 +149,7 @@ if __name__ == '__main__':
     model = SleepContrast(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
                           feature_dim=args.feature_dim, pred_steps=args.pred_steps,
                           batch_size=args.batch_size, num_seq=args.num_seq, kernel_sizes=[7, 11, 7])
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
 
     cache_dict = torch.load(args.load_path)

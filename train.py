@@ -124,6 +124,7 @@ def worker(rank, world_size, args):
     model = SleepContrast(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
                           feature_dim=args.feature_dim, pred_steps=args.pred_steps,
                           batch_size=args.batch_size, num_seq=args.num_seq, kernel_sizes=[7, 11, 7])
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda(rank)
     model = DDP(model, device_ids=[rank])
 
@@ -133,13 +134,12 @@ def worker(rank, world_size, args):
     criterion = nn.CrossEntropyLoss().cuda(rank)
     targets = compute_targets(args, device=rank)
 
-    data_x, data_y = prepare_dataset(path=args.data_path, patients=args.num_patient, seq_len=args.seq_len,
-                                    stride=args.stride)
+    data_x, data_y = prepare_dataset(path=args.data_path, patients=args.num_patient)
 
     train_x, test_x, train_y, test_y = train_test_split(data_x, data_y, train_size=args.train_ratio)
 
-    train_dataset = SleepEDFDataset(train_x, train_y, return_label=True)
-    train_sampler = DistributedSampler(train_dataset)
+    train_dataset = SleepEDFDataset(train_x, train_y, seq_len=args.seq_len, stride=args.stride, return_label=True)
+    train_sampler = DistributedSampler(train_dataset, num_replicas=args.world_size, rank=rank)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler,
                               drop_last=True, shuffle=(train_sampler is None), pin_memory=True)
 
@@ -147,8 +147,9 @@ def worker(rank, world_size, args):
     model.train()
     for epoch in range(args.epochs):
         train_sampler.set_epoch(epoch)
+        print(f'EPOCH [{epoch + 1}/{args.epochs}] started.')
 
-        for x, y in track(train_loader, description=f'EPOCH: [{epoch + 1}/{args.epochs}]'):
+        for x, y in train_loader:
             x, y = x.cuda(), y.cuda()
 
             optimizer.zero_grad()
@@ -165,6 +166,7 @@ def worker(rank, world_size, args):
                 'state_dict': model.module.state_dict(),
                 'optimizer': optimizer.state_dict(),
             }, os.path.join(args.save_path, f'pretrain_epoch_{epoch}_seed_{args.seed}.path.tar'))
+        print('finished.')
 
 
 if __name__ == '__main__':
