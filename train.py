@@ -6,28 +6,23 @@
 @Software: PyCharm
 @Desc    : 
 """
+import argparse
 import os
 import random
-import argparse
 import warnings
 
 import numpy as np
-
-from sklearn.metrics import accuracy_score, f1_score
-from rich.progress import track
-
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.model_selection import train_test_split
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torch.nn.parallel import DistributedDataParallel as DDP
 
-from sklearn.model_selection import train_test_split
-
-from bio_contrast.data import prepare_dataset, SleepEDFDataset
+from bio_contrast.data import prepare_sleepedf_dataset, SleepEDFDataset
 from bio_contrast.model import SleepContrast
 
 
@@ -134,7 +129,7 @@ def worker(rank, world_size, args):
     criterion = nn.CrossEntropyLoss().cuda(rank)
     targets = compute_targets(args, device=rank)
 
-    data_x, data_y = prepare_dataset(path=args.data_path, patients=args.num_patient)
+    data_x, data_y = prepare_sleepedf_dataset(path=args.data_path, patients=args.num_patient)
 
     train_x, test_x, train_y, test_y = train_test_split(data_x, data_y, train_size=args.train_ratio)
 

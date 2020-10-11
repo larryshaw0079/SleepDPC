@@ -6,22 +6,20 @@
 @Software: PyCharm
 @Desc    : 
 """
-import os
 import argparse
+import os
+import pickle
 
 import numpy as np
-
-from sklearn.metrics import accuracy_score, f1_score
-from rich.progress import track
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.metrics import accuracy_score, f1_score
 from torch.utils.data import DataLoader
+from tqdm.std import tqdm
 
-from sklearn.model_selection import train_test_split
-
-from bio_contrast.data import prepare_dataset, SleepEDFDataset
+from bio_contrast.data import SLEEPEDF_SUBJECTS, SleepEDFDataset
+from bio_contrast.data import prepare_pretraining_dataset, prepare_evaluation_dataset
 from bio_contrast.model import SleepContrast, SleepClassifier
 
 
@@ -33,21 +31,22 @@ def parse_args(verbose=True):
     parser.add_argument('--seed', type=int, default=2020)
 
     parser.add_argument('--num-patient', type=int, default=5)
-    parser.add_argument('--seq-len', type=int, default=20)
-    parser.add_argument('--stride', type=int, default=1)
+    parser.add_argument('--seq-len', type=int, default=10)
     parser.add_argument('--input-channels', type=int, default=2)
     parser.add_argument('--hidden-channels', type=int, default=16)
-    parser.add_argument('--num-seq', type=int, default=20)
+    # parser.add_argument('--num-seq', type=int, default=20)
     parser.add_argument('--pred-steps', type=int, default=5)
     parser.add_argument('--feature-dim', type=int, default=128)
     parser.add_argument('--num-classes', type=int, default=5)
-    parser.add_argument('--finetune-ratio', type=float, default=0.1)
+    parser.add_argument('--finetune-ratio', type=float, nargs='+', default=[0.01, 0.5, 0.1,
+                                                                            0.2, 0.3, 0.4,
+                                                                            0.5, 0.6, 0.7, 0.8,
+                                                                            0.9, 1.0])
 
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--finetune-epochs', type=int, default=10)
     parser.add_argument('--lr', dest='learning_rate', type=float, default=1e-3)
-    parser.add_argument('--batch-size', type=int, default=16)
-    parser.add_argument('--train-ratio', type=float, default=0.7)
+    parser.add_argument('--batch-size', type=int, default=32)
 
     args_parsed = parser.parse_args()
 
@@ -66,19 +65,19 @@ def parse_args(verbose=True):
     return args_parsed
 
 
-def compute_targets(args, device=0):
-    targets = torch.zeros(args.batch_size, args.pred_steps, args.num_seq, args.batch_size).long()
+def compute_targets(args):
+    targets = torch.zeros(args.batch_size, args.pred_steps, args.seq_len, args.batch_size).long()
     for i in range(args.batch_size):
         for j in range(args.pred_steps):
-            targets[i, j, args.num_seq - args.pred_steps + j, i] = 1
+            targets[i, j, args.seq_len - args.pred_steps + j, i] = 1
 
-    targets = targets.cuda(device)
-    targets = targets.view(args.batch_size * args.pred_steps, args.num_seq * args.batch_size)
+    targets = targets.cuda()
+    targets = targets.view(args.batch_size * args.pred_steps, args.seq_len * args.batch_size)
     targets = targets.argmax(dim=1)
     return targets
 
 
-def train(model, train_loader, args):
+def train(model, train_loader, split_id, args):
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.98),
                            eps=1e-09, weight_decay=1e-4, amsgrad=True)
     criterion = nn.CrossEntropyLoss()
@@ -88,13 +87,11 @@ def train(model, train_loader, args):
     for epoch in range(args.epochs):
         loss_list = []
 
-        for x, y in track(train_loader, description=f'EPOCH: [{epoch + 1}/{args.epochs}]'):
+        for x, y in tqdm(train_loader, desc=f'EPOCH: [{epoch + 1}/{args.epochs}]'):
             x, y = x.cuda(), y.cuda()
 
             optimizer.zero_grad()
             score = model(x)
-
-            print(f'{score.shape} - {targets.shape}')
 
             loss = criterion(score, targets)
 
@@ -108,7 +105,7 @@ def train(model, train_loader, args):
         if (epoch + 1) % 10 == 0:
             if not os.path.exists(args.save_path):
                 os.mkdir(args.save_path)
-            torch.save(model.state_dict(), os.path.join(args.save_path, f'encoder_epoch_{epoch}.pth'))
+            torch.save(model.state_dict(), os.path.join(args.save_path, f'encoder_{split_id}_epoch_{epoch}.pth'))
 
 
 def finetune(classifier, finetune_loader, args):
@@ -120,15 +117,19 @@ def finetune(classifier, finetune_loader, args):
     classifier.train()
 
     for epoch in range(args.finetune_epochs):
-        for x, y in track(finetune_loader, description='Finetune'):
+        losses = []
+        for x, y in tqdm(finetune_loader, desc=f'EPOCH:[{epoch + 1}/{args.finetune_epochs}]'):
             x, y = x.cuda(), y.cuda()
 
             optimizer.zero_grad()
             y_hat = classifier(x)
-            loss = criterion(y_hat, y[:, -1])
+            loss = criterion(y_hat, y[:, -args.pred_steps - 1])
 
             loss.backward()
             optimizer.step()
+
+            losses.append(loss.item())
+        print(f'Loss: {np.mean(losses)}')
 
 
 def evaluate(classifier, test_loader, args):
@@ -136,16 +137,16 @@ def evaluate(classifier, test_loader, args):
 
     predictions = []
     labels = []
-    for x, y in track(test_loader, description='Evaluation'):
-        x, y = x.cuda(), y.cuda()
+    for x, y in tqdm(test_loader):
+        x = x.cuda()
 
         with torch.no_grad():
             y_hat = classifier(x)
 
-        labels.append(y.cpu().numpy())
+        labels.append(y.numpy()[:, -args.pred_steps - 1])
         predictions.append(y_hat.cpu().numpy())
 
-    labels = np.concatenate(labels, axis=0)[:, -1]
+    labels = np.concatenate(labels, axis=0)
     predictions = np.concatenate(predictions, axis=0)
     predictions = np.argmax(predictions, axis=1)
 
@@ -168,48 +169,70 @@ if __name__ == '__main__':
 
     setup_seed(args.seed)
 
-    data, targets = prepare_dataset(path=args.data_path, patients=args.num_patient, seq_len=args.seq_len,
-                                    stride=args.stride)
-    train_x, test_x, train_y, test_y = train_test_split(data, targets, train_size=args.train_ratio)
+    results = {}
 
-    train_dataset = SleepEDFDataset(train_x, train_y, return_label=True)
-    test_dataset = SleepEDFDataset(test_x, test_y, return_label=True)
+    for i in range(len(SLEEPEDF_SUBJECTS)):
+        train_subjects = list(set(SLEEPEDF_SUBJECTS) - {SLEEPEDF_SUBJECTS[i]})
+        test_subjects = [SLEEPEDF_SUBJECTS[i]]
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
-                              drop_last=True, shuffle=True, pin_memory=True)
-    model = SleepContrast(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
-                          feature_dim=args.feature_dim, pred_steps=args.pred_steps,
-                          batch_size=args.batch_size, num_seq=args.num_seq, kernel_sizes=[7, 11, 7])
-    model.cuda()
+        print(f'**********ROUND {i + 1} STARTED**********')
+        print('Train subjects:', train_subjects)
+        print('Test subjects:', test_subjects)
 
-    train(model, train_loader, args)
+        pretrain_data, pretrain_targets = prepare_pretraining_dataset(args.data_path, seq_len=args.seq_len,
+                                                                      patients=train_subjects)
 
-    classifier = SleepClassifier(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
-                                 num_classes=args.num_classes, feature_dim=args.feature_dim,
-                                 pred_steps=args.pred_steps, batch_size=args.batch_size,
-                                 num_seq=args.num_seq, kernel_sizes=[7, 11, 7])
-    classifier.cuda()
+        pretrain_dataset = SleepEDFDataset(pretrain_data, pretrain_targets, return_label=True)
 
-    # Copying encoder params
-    for finetune_param, pretraining_param in zip(classifier.encoder.parameters(), model.encoder.parameters()):
-        finetune_param.data = pretraining_param.data
+        pretrain_loader = DataLoader(pretrain_dataset, batch_size=args.batch_size,
+                                     drop_last=True, shuffle=True, pin_memory=True)
 
-    # Copying gru params
-    for finetune_param, pretraining_param in zip(classifier.gru.parameters(), model.gru.parameters()):
-        finetune_param.data = pretraining_param.data
+        model = SleepContrast(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
+                              feature_dim=args.feature_dim, pred_steps=args.pred_steps,
+                              batch_size=args.batch_size, num_seq=args.seq_len, kernel_sizes=[7, 11, 7])
+        model.cuda()
 
-    classifier.freeze_parameters()
+        train(model, pretrain_loader, i, args)
 
-    finetune_size = int(len(train_dataset) * args.finetune_ratio)
-    finetune_idx = np.random.choice(np.arange(len(train_dataset)), size=finetune_size, replace=False)
-    finetune_x, finetune_y = train_x[finetune_idx], train_y[finetune_idx]
-    finetune_dataset = SleepEDFDataset(finetune_x, finetune_y, return_label=True)
-    finetune_loader = DataLoader(finetune_dataset, batch_size=args.batch_size,
-                                 drop_last=True, shuffle=True, pin_memory=True)
+        classifier = SleepClassifier(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
+                                     num_classes=args.num_classes, feature_dim=args.feature_dim,
+                                     pred_steps=args.pred_steps, batch_size=args.batch_size,
+                                     num_seq=args.seq_len, kernel_sizes=[7, 11, 7])
+        classifier.cuda()
 
-    finetune(classifier, finetune_loader, args)
-    torch.save(classifier.state_dict(), os.path.join(args.save_path, 'classifier.pth'))
+        # Copying encoder params
+        for finetune_param, pretraining_param in zip(classifier.encoder.parameters(), model.encoder.parameters()):
+            finetune_param.data = pretraining_param.data
 
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, drop_last=True, shuffle=True, pin_memory=True)
-    results = evaluate(classifier, test_loader, args)
+        # Copying gru params
+        for finetune_param, pretraining_param in zip(classifier.gru.parameters(), model.gru.parameters()):
+            finetune_param.data = pretraining_param.data
+
+        classifier.freeze_parameters()
+
+        current_split_result = {}
+        for ratio in tqdm(args.finetune_ratio):
+            print(f'Test finetune ratio {ratio}...')
+            finetune_data, finetune_targets = prepare_evaluation_dataset(args.data_path,
+                                                                         seq_len=args.seq_len,
+                                                                         patients=train_subjects,
+                                                                         sample_ratio=ratio)
+            finetune_dataset = SleepEDFDataset(finetune_data, finetune_targets, return_label=True)
+            finetune_loader = DataLoader(finetune_dataset, batch_size=args.batch_size,
+                                         drop_last=True, shuffle=True, pin_memory=True)
+
+            finetune(classifier, finetune_loader, args)
+            torch.save(classifier.state_dict(), os.path.join(args.save_path, f'classifier_{i}_{ratio}.pth'))
+
+            test_data, test_targets = prepare_evaluation_dataset(args.data_path,
+                                                                 seq_len=args.seq_len, patients=test_subjects,
+                                                                 sample_ratio=1.0)
+            test_dataset = SleepEDFDataset(test_data, test_targets, return_label=True)
+            test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
+                                     drop_last=True, shuffle=True, pin_memory=True)
+            current_ratio_result = evaluate(classifier, test_loader, args)
+            current_split_result[ratio] = current_ratio_result
+        results[i] = current_split_result
+
     print(results)
+    pickle.dump(results, os.path.join(args.save_path, 'results.pkl'))

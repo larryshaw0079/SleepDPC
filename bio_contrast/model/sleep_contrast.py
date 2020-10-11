@@ -20,9 +20,9 @@ class SleepContrast(nn.Module):
         self.hidden_channels = hidden_channels
         self.feature_dim = feature_dim
         self.pred_steps = pred_steps
-        self.num_seq = num_seq
         self.batch_size = batch_size
         self.kernel_sizes = kernel_sizes
+        self.num_seq = num_seq
 
         self.targets = None
 
@@ -45,6 +45,20 @@ class SleepContrast(nn.Module):
     #                 nn.init.constant_(param, 0.0)
     #             elif 'weight' in name:
     #                 nn.init.orthogonal_(param, 0.1)
+
+    def compute_targets(self, recompute=False):
+        if recompute or self.targets is None:
+            self.targets = torch.zeros(self.batch_size, self.pred_steps, self.num_seq, self.batch_size).long()
+            for i in range(self.batch_size):
+                for j in range(self.pred_steps):
+                    self.targets[i, j, self.num_seq - self.pred_steps + j, i] = 1
+
+            self.targets = self.targets.cuda()
+            self.targets = self.targets.view(self.batch_size * self.pred_steps, self.num_seq * self.batch_size)
+            self.targets = self.targets.argmax(dim=1)
+            return self.targets
+        else:
+            return self.targets
 
     def forward(self, x):
         # Extract feautres

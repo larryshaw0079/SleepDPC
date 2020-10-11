@@ -6,24 +6,21 @@
 @Software: PyCharm
 @Desc    : 
 """
+import argparse
 import os
 import random
-import argparse
 import warnings
 
 import numpy as np
-
-from sklearn.metrics import accuracy_score, f1_score
-from rich.progress import track
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from rich.progress import track
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 
-from sklearn.model_selection import train_test_split
-
-from bio_contrast.data import prepare_dataset, SleepEDFDataset
+from bio_contrast.data import prepare_sleepedf_dataset, SleepEDFDataset
 from bio_contrast.model import SleepContrast, SleepClassifier
 
 
@@ -136,7 +133,7 @@ if __name__ == '__main__':
 
     setup_seed(args.seed)
 
-    data, targets = prepare_dataset(path=args.data_path, patients=args.num_patient)
+    data, targets = prepare_sleepedf_dataset(path=args.data_path, patients=args.num_patient)
     train_x, test_x, train_y, test_y = train_test_split(data, targets, train_size=args.train_ratio)
     train_dataset = SleepEDFDataset(train_x, train_y, seq_len=args.seq_len,
                                     stride=args.stride, return_label=True)

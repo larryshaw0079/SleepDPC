@@ -6,10 +6,9 @@
 @Software: PyCharm
 @Desc    : 
 """
-import torch
 import torch.nn as nn
 
-from ..backbone import ResNet, GRU, StatePredictor
+from ..backbone import ResNet, GRU
 
 
 class SleepClassifier(nn.Module):
@@ -33,8 +32,13 @@ class SleepClassifier(nn.Module):
         self.gru = GRU(input_size=feature_dim, hidden_size=feature_dim, num_layers=2)
 
         # Classifier
-        self.relu = nn.ReLU()
-        self.mlp = nn.Linear(feature_dim, num_classes)
+        self.mlp = nn.Sequential(
+            nn.ReLU(inplace=True),
+            #             nn.Linear(feature_dim, feature_dim),
+            #             nn.BatchNorm1d(feature_dim),
+            #             nn.ReLU(inplace=True),
+            nn.Linear(feature_dim, num_classes)
+        )
 
     def freeze_parameters(self):
         for p in self.encoder.parameters():
@@ -57,7 +61,7 @@ class SleepClassifier(nn.Module):
         context, h_n = self.gru(feature[:, :-self.pred_steps, :], h_0)
 
         context = context[:, -1, :]
-        out = self.relu(context)
-        out = self.mlp(out)
+        #         out = self.relu(context)
+        out = self.mlp(context)
 
         return out

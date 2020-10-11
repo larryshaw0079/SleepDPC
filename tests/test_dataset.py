@@ -6,15 +6,14 @@
 @Software: PyCharm
 @Desc    : 
 """
-from tqdm.std import tqdm
 
 from torch.utils.data import DataLoader
 
-from bio_contrast.data import prepare_dataset, SleepEDFDataset
+from bio_contrast.data import prepare_sleepedf_dataset, SleepEDFDataset
 
 
 def test_sleep_edfdataset():
-    data, targets = prepare_dataset(path='./data/sleepedf', patients=2)
+    data, targets = prepare_sleepedf_dataset(path='./data/sleepedf', patients=2)
     print(len(data))
     print(len(targets))
     print(data[0].shape, data[1].shape)
