@@ -89,7 +89,7 @@ def finetune(classifier, finetune_loader, args):
                            weight_decay=1e-4, amsgrad=True)
     criterion = nn.CrossEntropyLoss()
 
-    classifier.pretrain()
+    classifier.train()
 
     for epoch in range(args.finetune_epochs):
         for x, y in track(finetune_loader, description='Finetune'):
