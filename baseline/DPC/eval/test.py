@@ -1,11 +1,11 @@
+import argparse
 import os
+import re
 import sys
 import time
-import argparse
-import re
-import numpy as np
-from tqdm import tqdm
+
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 sys.path.append('../utils')
 sys.path.append('../backbone')
@@ -18,8 +18,8 @@ from utils import AverageMeter, ConfusionMeter, save_checkpoint, write_log, calc
 import torch
 import torch.optim as optim
 from torch.utils import data
-import torch.nn as nn  
-from torchvision import datasets, models, transforms
+import torch.nn as nn
+from torchvision import transforms
 import torchvision.utils as vutils
 
 parser = argparse.ArgumentParser()
@@ -218,7 +218,7 @@ def main():
 def train(data_loader, model, optimizer, epoch):
     losses = AverageMeter()
     accuracy = AverageMeter()
-    model.train()
+    model.pretrain()
     global iteration
 
     for idx, (input_seq, target) in enumerate(data_loader):

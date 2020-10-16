@@ -1,12 +1,14 @@
+import argparse
 import os
+import re
 import sys
 import time
-import re
-import argparse
-import numpy as np
-from tqdm import tqdm
-from tensorboardX import SummaryWriter
+
 import matplotlib.pyplot as plt
+import numpy as np
+from tensorboardX import SummaryWriter
+from tqdm import tqdm
+
 plt.switch_backend('agg')
 
 sys.path.append('../utils')
@@ -19,7 +21,7 @@ from utils import AverageMeter, save_checkpoint, denorm, calc_topk_accuracy
 import torch
 import torch.optim as optim
 from torch.utils import data
-from torchvision import datasets, models, transforms
+from torchvision import transforms
 import torchvision.utils as vutils
 
 torch.backends.cudnn.benchmark = True
@@ -188,7 +190,7 @@ def train(data_loader, model, optimizer, epoch):
     losses = AverageMeter()
     accuracy = AverageMeter()
     accuracy_list = [AverageMeter(), AverageMeter(), AverageMeter()]
-    model.train()
+    model.pretrain()
     global iteration
 
     for idx, input_seq in enumerate(data_loader):

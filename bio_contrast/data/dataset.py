@@ -34,9 +34,13 @@ SLEEPEDF_SUBJECTS = ['SC4042E0.npz',
                      'SC4071E0.npz',
                      'SC4092E0.npz']
 
+ISRUC_SUBJECTS = [f'subject{i}.npz' for i in range(1, 11)]
 
-def prepare_pretraining_dataset(path, seq_len, patients: List = None):
+
+def prepare_pretraining_dataset(path, seq_len, data_category, patients: List = None):
     assert os.path.exists(path)
+    assert data_category in ['sleepedf', 'isruc']
+    file_names = patients
 
     data_list = []
     target_list = []
@@ -48,11 +52,20 @@ def prepare_pretraining_dataset(path, seq_len, patients: List = None):
 
     for filename in candidate_files:
         tmp = np.load(filename)
-        current_data = np.concatenate(
-            (tmp['eeg_fpz_cz'].reshape(-1, 1, tmp['eeg_fpz_cz'].shape[-1]),
-             tmp['eeg_pz_oz'].reshape(-1, 1, tmp['eeg_pz_oz'].shape[-1])),
-            axis=1)
-        current_target = tmp['annotation']
+
+        if data_category == 'sleepedf':
+            current_data = np.concatenate(
+                (tmp['eeg_fpz_cz'].reshape(-1, 1, tmp['eeg_fpz_cz'].shape[-1]),
+                 tmp['eeg_pz_oz'].reshape(-1, 1, tmp['eeg_pz_oz'].shape[-1])),
+                axis=1)
+            current_target = tmp['annotation']
+        else:
+            current_data = []
+            for channel in ['F3_A2', 'C3_A2', 'F4_A1', 'C4_A1', 'O1_A2', 'O2_A1']:
+                current_data.append(np.expand_dims(tmp[channel], 1))
+            current_data = np.concatenate(current_data, axis=1)
+            current_target = tmp['label']
+
         for i in range(0, len(current_data), seq_len):
             if i + seq_len > len(current_data):
                 break
@@ -65,8 +78,10 @@ def prepare_pretraining_dataset(path, seq_len, patients: List = None):
     return data_list, target_list
 
 
-def prepare_evaluation_dataset(path, seq_len, patients: List, sample_ratio=1.0):
+def prepare_evaluation_dataset(path, seq_len, data_category, patients: List, sample_ratio=1.0):
     assert os.path.exists(path)
+    assert data_category in ['sleepedf', 'isruc']
+    file_names = patients
 
     data_list = []
     target_list = []
@@ -78,11 +93,19 @@ def prepare_evaluation_dataset(path, seq_len, patients: List, sample_ratio=1.0):
 
     for filename in candidate_files:
         tmp = np.load(filename)
-        current_data = np.concatenate(
-            (tmp['eeg_fpz_cz'].reshape(-1, 1, tmp['eeg_fpz_cz'].shape[-1]),
-             tmp['eeg_pz_oz'].reshape(-1, 1, tmp['eeg_pz_oz'].shape[-1])),
-            axis=1)
-        current_target = tmp['annotation']
+
+        if data_category == 'sleepedf':
+            current_data = np.concatenate(
+                (tmp['eeg_fpz_cz'].reshape(-1, 1, tmp['eeg_fpz_cz'].shape[-1]),
+                 tmp['eeg_pz_oz'].reshape(-1, 1, tmp['eeg_pz_oz'].shape[-1])),
+                axis=1)
+            current_target = tmp['annotation']
+        else:
+            current_data = []
+            for channel in ['F3_A2', 'C3_A2', 'F4_A1', 'C4_A1', 'O1_A2', 'O2_A1']:
+                current_data.append(np.expand_dims(tmp[channel], 1))
+            current_data = np.concatenate(current_data, axis=1)
+            current_target = tmp['label']
         if sample_ratio == 1.0:
             for i in range(len(current_data)):
                 if i + seq_len > len(current_data):
@@ -102,7 +125,7 @@ def prepare_evaluation_dataset(path, seq_len, patients: List, sample_ratio=1.0):
     return data_list, target_list
 
 
-class SleepEDFDataset(Dataset):
+class SleepDataset(Dataset):
     def __init__(self, x, y, return_label=False):
         self.return_label = return_label
 

@@ -13,7 +13,8 @@ from ..backbone import ResNet, GRU, StatePredictor
 
 
 class SleepContrast(nn.Module):
-    def __init__(self, input_channels, hidden_channels, feature_dim, pred_steps, num_seq, batch_size, kernel_sizes):
+    def __init__(self, input_channels, hidden_channels, feature_dim, pred_steps, num_seq, batch_size, relative_position,
+                 kernel_sizes):
         super(SleepContrast, self).__init__()
 
         self.input_channels = input_channels
@@ -23,42 +24,16 @@ class SleepContrast(nn.Module):
         self.batch_size = batch_size
         self.kernel_sizes = kernel_sizes
         self.num_seq = num_seq
-
-        self.targets = None
+        self.relative_position = relative_position
 
         # Local Encoder
         self.encoder = ResNet(input_channels, hidden_channels, feature_dim, kernel_sizes=kernel_sizes)
-
-        # Memory bank
-        #         memory_bank = torch.randn(total_size, output_length)
-        #         self.register_buffer('memory_bank', memory_bank)
 
         # Aggregator
         self.gru = GRU(input_size=feature_dim, hidden_size=feature_dim, num_layers=2)
 
         # Predictor
         self.predictor = StatePredictor(input_dim=feature_dim, output_dim=feature_dim)
-
-    #     def _initialize_weights(self, module):
-    #         for name, param in module.named_parameters():
-    #             if 'bias' in name:
-    #                 nn.init.constant_(param, 0.0)
-    #             elif 'weight' in name:
-    #                 nn.init.orthogonal_(param, 0.1)
-
-    def compute_targets(self, recompute=False):
-        if recompute or self.targets is None:
-            self.targets = torch.zeros(self.batch_size, self.pred_steps, self.num_seq, self.batch_size).long()
-            for i in range(self.batch_size):
-                for j in range(self.pred_steps):
-                    self.targets[i, j, self.num_seq - self.pred_steps + j, i] = 1
-
-            self.targets = self.targets.cuda()
-            self.targets = self.targets.view(self.batch_size * self.pred_steps, self.num_seq * self.batch_size)
-            self.targets = self.targets.argmax(dim=1)
-            return self.targets
-        else:
-            return self.targets
 
     def forward(self, x):
         # Extract feautres
@@ -67,6 +42,11 @@ class SleepContrast(nn.Module):
         x = x.view(batch * num_seq, channel, seq_len)
         feature = self.encoder(x)
         feature = feature.view(batch, num_seq, self.feature_dim)  # (batch, num_seq, feature_dim)
+        feature_trans = feature.transpose(0, 2).contiguous()
+
+        if self.relative_position:
+            position_score = torch.einsum('ijk,kmn->ijmn', [feature, feature_trans])
+            position_score = position_score.view(batch * num_seq, num_seq * batch)
 
         # Get context feature
         h_0 = self.gru.init_hidden(self.batch_size)
@@ -86,10 +66,12 @@ class SleepContrast(nn.Module):
         pred = torch.stack(pred, 1)  # (batch, pred_step, feature_dim)
 
         # Compute scores
-        feature = feature.transpose(0, 2).contiguous()  # (feature_dim, num_seq, batch)
         pred = pred.contiguous()
 
-        score = torch.einsum('ijk,kmn->ijmn', [pred, feature])  # (batch, pred_step, num_seq, batch)
-        score = score.view(batch * self.pred_steps, num_seq * batch)
+        cpc_score = torch.einsum('ijk,kmn->ijmn', [pred, feature_trans])  # (batch, pred_step, num_seq, batch)
+        cpc_score = cpc_score.view(batch * self.pred_steps, num_seq * batch)
 
-        return score
+        if self.relative_position:
+            return cpc_score, position_score
+        else:
+            return cpc_score
