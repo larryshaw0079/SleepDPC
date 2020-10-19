@@ -234,25 +234,25 @@ if __name__ == '__main__':
 
         pretrain(model, pretrain_loader, i, args)
 
-        classifier = SleepClassifier(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
-                                     num_classes=args.num_classes, feature_dim=args.feature_dim,
-                                     pred_steps=args.pred_steps, batch_size=args.batch_size,
-                                     num_seq=args.seq_len, kernel_sizes=[7, 11, 7])
-        classifier.cuda()
-
-        # Copying encoder params
-        for finetune_param, pretraining_param in zip(classifier.encoder.parameters(), model.encoder.parameters()):
-            finetune_param.data = pretraining_param.data
-
-        # Copying gru params
-        for finetune_param, pretraining_param in zip(classifier.gru.parameters(), model.gru.parameters()):
-            finetune_param.data = pretraining_param.data
-
-        classifier.freeze_parameters()
-
         current_split_result = {}
         for ratio in tqdm(args.finetune_ratio):
             print(f'Test finetune ratio {ratio}...')
+            classifier = SleepClassifier(input_channels=args.input_channels, hidden_channels=args.hidden_channels,
+                                         num_classes=args.num_classes, feature_dim=args.feature_dim,
+                                         pred_steps=args.pred_steps, batch_size=args.batch_size,
+                                         num_seq=args.seq_len, kernel_sizes=[7, 11, 7])
+            classifier.cuda()
+
+            # Copying encoder params
+            for finetune_param, pretraining_param in zip(classifier.encoder.parameters(), model.encoder.parameters()):
+                finetune_param.data = pretraining_param.data
+
+            # Copying gru params
+            for finetune_param, pretraining_param in zip(classifier.gru.parameters(), model.gru.parameters()):
+                finetune_param.data = pretraining_param.data
+
+            classifier.freeze_parameters()
+
             finetune_data, finetune_targets = prepare_evaluation_dataset(args.data_path,
                                                                          data_category=args.data_category,
                                                                          seq_len=args.seq_len,
