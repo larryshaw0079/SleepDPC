@@ -2,17 +2,16 @@
 @Time    : 2020/9/29 12:22
 @Author  : Xiao Qinfeng
 @Email   : qfxiao@bjtu.edu.cn
-@File    : predictor.py
+@File    : mlp.py
 @Software: PyCharm
 @Desc    : 
 """
-import torch
 import torch.nn as nn
 
 
-class StatePredictor(nn.Module):
+class MLP(nn.Module):
     def __init__(self, input_dim, output_dim):
-        super(StatePredictor, self).__init__()
+        super(MLP, self).__init__()
 
         self.pred = nn.Sequential(
             nn.Linear(input_dim, output_dim),

@@ -32,5 +32,7 @@ class GRU(nn.Module):
         # h_n: (num_layers, batch, hidden_size)
         return out, h_n
 
-    def init_hidden(self, batch_size):
-        return torch.randn(self.num_layers, batch_size, self.hidden_size).cuda()
+    def init_hidden(self, batch_size, device):
+        hidden_states = torch.randn(self.num_layers, batch_size, self.hidden_size)
+        hidden_states = hidden_states.to(device)
+        return hidden_states
