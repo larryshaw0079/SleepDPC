@@ -49,7 +49,7 @@ class CoSleep(nn.Module):
             position_score = position_score.view(batch * num_seq, num_seq * batch)
 
         # Get context feature
-        h_0 = self.gru.init_hidden(self.batch_size)
+        h_0 = None
         # out: (batch, num_seq, hidden_size)
         # h_n: (num_layers, batch, hidden_size)
         out, h_n = self.gru(feature[:, :-self.pred_steps, :], h_0)

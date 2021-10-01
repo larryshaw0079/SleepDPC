@@ -26,7 +26,7 @@
       <paths name="XiaoQinfeng@211.71.76.25:22">
         <serverdata>
           <mappings>
-            <mapping deploy="/data/XiaoQinfeng/work_dir/pytorch/CoSleep" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/data/XiaoQinfeng/work_dir/pytorch/SleepDPC" local="$PROJECT_DIR$" web="/" />
             <mapping local="" />
           </mappings>
         </serverdata>

@@ -20,9 +20,9 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.std import tqdm
 
-from cosleep.data import SleepDataset
-from cosleep.model import CoSleep, SleepClassifier
-from cosleep.utils import (
+from sleepdpc.data import SleepDataset
+from sleepdpc.model import CoSleep, SleepClassifier
+from sleepdpc.utils import (
     logits_accuracy,
     adjust_learning_rate,
     get_performance
@@ -120,28 +120,37 @@ def pretrain(model, dataset, device, run_id, writer, args):
     else:
         raise ValueError('Invalid optimizer!')
 
-    criterion = nn.CrossEntropyLoss().cuda(device)
-
     data_loader = DataLoader(dataset, batch_size=args.batch_size, num_workers=args.num_workers,
                              shuffle=True, pin_memory=True, drop_last=True)
+
+    use_relative_position = True
+
+    criterion = nn.CrossEntropyLoss()
+    cpc_targets = model.compute_cpc_targets(args.batch_size, args.pred_steps, args.num_epoch)
+    if use_relative_position:
+        position_targets = model.compute_position_targets(args.batch_size, args.num_epoch)
 
     model.train()
     for epoch in range(args.pretrain_epochs):
         losses = []
-        accuracies = []
+        # accuracies = []
         adjust_learning_rate(optimizer, args.lr, epoch, args.pretrain_epochs, args)
         with tqdm(data_loader, desc=f'EPOCH [{epoch + 1}/{args.pretrain_epochs}]') as progress_bar:
             for x, _ in progress_bar:
                 x = x.cuda(device, non_blocking=True)
 
-                output, target = model(x)
-                loss = criterion(output, target)
+                if use_relative_position:
+                    cpc_score, rp_score = model(x)
+                    loss = criterion(cpc_score, cpc_targets) + criterion(rp_score, position_targets)
+                else:
+                    score = model(x)
+                    loss = criterion(score, cpc_targets)
 
-                acc = logits_accuracy(output, target, topk=(1,))[0]
-                accuracies.append(acc)
+                # acc = logits_accuracy(output, target, topk=(1,))[0]
+                # accuracies.append(acc)
 
                 writer.add_scalar('Loss/pretrain', loss.item(), epoch)
-                writer.add_scalar('Accuracy/pretrain', acc, epoch)
+                # writer.add_scalar('Accuracy/pretrain', acc, epoch)
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -149,7 +158,7 @@ def pretrain(model, dataset, device, run_id, writer, args):
 
                 losses.append(loss.item())
 
-                progress_bar.set_postfix({'Loss': np.mean(losses), 'ACC': np.mean(accuracies)})
+                progress_bar.set_postfix({'Loss': np.mean(losses)})
         if (epoch + 1) % args.save_interval == 0:
             torch.save({'state_dict': model.state_dict(), 'epoch': epoch},
                        os.path.join(args.save_path, f'dpc_{args.network}_{run_id}_pretrain_{epoch}.pth.tar'))
