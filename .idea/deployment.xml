@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="XiaoQinfeng@172.31.246.46:22" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+  <component name="PublishConfigData" autoUpload="Always" serverName="XiaoQinfeng@211.71.76.25:22" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
     <serverData>
+      <paths name="WangJing@172.31.246.45:22">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="XiaoQinfeng@172.31.246.46:22">
         <serverdata>
           <mappings>
@@ -10,6 +17,21 @@
         </serverdata>
       </paths>
       <paths name="XiaoQinfeng@172.31.246.53:22">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="XiaoQinfeng@211.71.76.25:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/data/XiaoQinfeng/work_dir/pytorch/CoSleep" local="$PROJECT_DIR$" web="/" />
+            <mapping local="" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@211.71.76.25:22">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />

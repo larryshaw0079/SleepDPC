@@ -9,7 +9,7 @@
 
 from torch.utils.data import DataLoader
 
-from bio_contrast.data import prepare_sleepedf_dataset, SleepEDFDataset
+from older_version.bio_contrast import prepare_sleepedf_dataset, SleepEDFDataset
 
 
 def test_sleep_edfdataset():

@@ -14,7 +14,7 @@ import numpy as np
 from scipy import signal
 from tqdm.std import tqdm
 
-DATA_PATH = './data/sleepedf'
+DATA_PATH = '../data/sleepedf'
 DEST_PATH = './data/sleepedf_processed'
 MAX_PERTURBATION = 5 * 100
 NUM_SAMPLING = 5
