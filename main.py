@@ -205,10 +205,10 @@ def finetune(classifier, dataset, sampler, device, args):
         losses = []
         accuracies = []
         with tqdm(data_loader, desc=f'EPOCH [{epoch + 1}/{args.finetune_epochs}]') as progress_bar:
-            for x1, y, x2, _ in progress_bar:
-                x1, y, x2 = x1.cuda(device, non_blocking=True), y.cuda(device, non_blocking=True), x2.cuda(device,
-                                                                                                           non_blocking=True)
-                out = classifier(x1, x2)
+            for x, y in progress_bar:
+                x, y = x.cuda(device, non_blocking=True), y.cuda(device, non_blocking=True)
+
+                out = classifier(x)
                 loss = criterion(out, y.view(-1))
 
                 optimizer.zero_grad()
@@ -231,10 +231,10 @@ def evaluate(classifier, dataset, device, args):
 
     classifier.eval()
     with torch.no_grad():
-        for x1, y, x2, _ in data_loader:
-            x1, x2 = x1.cuda(device, non_blocking=True), x2.cuda(device, non_blocking=True)
+        for x, y in data_loader:
+            x = x.cuda(device, non_blocking=True)
 
-            out = classifier(x1, x2)
+            out = classifier(x)
             scores.append(out.cpu().numpy())
             targets.append(y.view(-1).numpy())
 
@@ -282,7 +282,7 @@ def main_worker(run_id, device, train_patients, test_patients, args):
         use_final_bn = False
 
     classifier = SleepClassifier(input_channels=args.channels, hidden_channels=16,
-                                 num_classes=args.num_classes, feature_dim=args.feature_dim,
+                                 num_classes=args.classes, feature_dim=args.feature_dim,
                                  pred_steps=args.pred_steps, batch_size=args.batch_size,
                                  num_seq=args.num_epoch, kernel_sizes=[7, 11, 7])
     classifier.cuda()

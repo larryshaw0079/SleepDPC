@@ -136,8 +136,6 @@ class SleepClassifier(nn.Module):
     def freeze_parameters(self):
         for p in self.encoder.parameters():
             p.requires_grad = False
-        for p in self.gru.parameters():
-            p.requires_grad = False
 
     def forward(self, x):
         # Extract feautres
@@ -145,7 +143,7 @@ class SleepClassifier(nn.Module):
         (batch, num_seq, channel, seq_len) = x.shape
         x = x.view(batch * num_seq, channel, seq_len)
         feature = self.encoder(x)
-        feature = feature.view(batch, num_seq, self.feature_dim)  # (batch, num_seq, feature_dim)
+        # feature = feature.view(batch, num_seq, self.feature_dim)  # (batch, num_seq, feature_dim)
 
         feature = F.normalize(feature, p=2, dim=-1)
 
