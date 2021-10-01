@@ -63,7 +63,7 @@ class SleepDataset(Dataset):
             elif data_name == 'isruc':
                 recordings = np.stack([data['F3_A2'], data['C3_A2'], data['F4_A1'], data['C4_A1'],
                                        data['O1_A2'], data['O2_A1']], axis=1)
-                annotations = data['label'].flatten()
+                annotations = data['stage_label'].flatten()
             else:
                 raise ValueError
 
